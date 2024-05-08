@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gomoku Game</title>
+  <style>
+    /* Add your CSS styles here */
+    .board {
+      display: grid;
+      grid-template-columns: repeat(15, 40px);
+      grid-template-rows: repeat(15, 40px);
+      gap: 1px;
+      border: 1px solid #000;
+      margin-bottom: 20px;
+    }
+
+    .cell {
+      width: 40px;
+      height: 40px;
+      background-color: #f0f0f0;
+      border: 1px solid #000;
+    }
+
+    .win {
+      background-color: yellow; /* Change background color to highlight winning positions */
+    }
+  </style>
+</head>
+<body>
+  <h1>Gomoku Game</h1>
+  <label for="roomId">Enter Room ID:</label>
+  <input type="text" id="roomId" name="roomId">
+  <button id="joinButton">Join Game</button>
+  <div id="roomInfo" style="display: none;">Current Room: <span id="currentRoom"></span></div>
+  <div class="board" id="board"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.2/socket.io.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const socket = io('http://localhost:3000'); // Connect to localhost:3000
+      const board = document.getElementById('board');
+      const joinButton = document.getElementById('joinButton');
+      const roomInfo = document.getElementById('roomInfo');
+      const currentRoomSpan = document.getElementById('currentRoom');
+      let playerColor;
+
+      // Function to initialize the game board
+      function initializeBoard() {
+        for (let i = 0; i < 15; i++) {
+          for (let j = 0; j < 15; j++) {
+            const cell = document.createElement('div');
+            cell.classList.add('cell');
+            cell.dataset.row = i;
+            cell.dataset.col = j;
+            cell.addEventListener('click', () => {
+              const row = parseInt(cell.dataset.row);
+              const col = parseInt(cell.dataset.col);
+              // Send selected move to the server
+              socket.emit('makeMove', {
+                roomId: document.getElementById('roomId').value, // Get roomId from input field
+                move: { x: row, y: col },
+              }); // Emit "makeMove" event with JSON data
+            });
+            board.appendChild(cell);
+          }
+        }
+      }
+
+      // Function to join the game
+      function joinGame() {
+        const roomId = document.getElementById('roomId').value;
+        if (roomId.trim() !== '') {
+          socket.emit('joinGame', roomId); // Join the game with the specified roomId
+        } else {
+          alert('Please enter a Room ID.');
+        }
+      }
+
+      // Hide join button and display current room after successfully joining
+      socket.on('joinSuccess', (data) => {
+        joinButton.style.display = 'none';
+        roomInfo.style.display = 'block';
+        currentRoomSpan.textContent = data.playerColor === 1 ? 'Black' : 'White';
+        playerColor = data.playerColor;
+      });
+
+      // Join game when the button is clicked
+      joinButton.addEventListener('click', joinGame);
+
+      // Listen for gameState event from the server
+      socket.on('gameState', (data) => {
+        // Clear the board
+        board.innerHTML = '';
+        // Initialize the board with the received gameState data
+        initializeBoard();
+        // Populate the board with the received gameState data
+        data.board.forEach((row, rowIndex) => {
+          row.forEach((cellValue, colIndex) => {
+            const cell = document.querySelector(
+              `.cell[data-row="${rowIndex}"][data-col="${colIndex}"]`,
+            );
+            if (cell) {
+              cell.textContent = cellValue === 0 ? '' : cellValue === 1 ? 'X' : 'O'; // Update cell with player symbol
+            }
+          });
+        });
+      });
+
+      // Handle gameResult event to show winner based on playerColor and highlight winning positions
+      socket.on('gameResult', (data) => {
+        if (data.winner !== null) {
+          if (data.winner === playerColor) {
+            alert('You Win!');
+          } else {
+            alert('Opponent Wins!');
+          }
+          // Highlight winning positions
+          data.winPositions.forEach(pos => {
+            const winCell = document.querySelector(`.cell[data-row="${pos.x}"][data-col="${pos.y}"]`);
+            if (winCell) {
+              winCell.classList.add('win');
+            }
+          });
+        } else if (data.isDraw) {
+          alert('It\'s a Draw!');
+        }
+      });
+
+      socket.on('exception', (data) => {
+        console.log('data', data)
+        alert(data.message);
+      })
+    });
+  </script>
+</body>
+</html>
